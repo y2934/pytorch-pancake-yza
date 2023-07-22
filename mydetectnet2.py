@@ -21,6 +21,7 @@
 # DEALINGS IN THE SOFTWARE.
 #
 
+
 import jetson.inference
 import serial as ser
 import time
@@ -39,7 +40,7 @@ Other_waste = [3]
 Harmful_waste = [1,2]
 Kitchen_waste = [4,5,6]
 global n,flag#检测帧照片命名
-n=1042
+n=1000
 flag=0
 
 #serial port initialization
@@ -86,15 +87,15 @@ input = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
 
 def Detect_mine():
 	global n
-	time.sleep(0.2)
+	time.sleep(0.3)
 	img = input.Capture()
-	display.Render(img)
+	
 
 	# detect objects in the image (with overlay)
 	detections = net.Detect(img, overlay=opt.overlay)
 	#display.Render(img)
 	#display.SetStatus(str(n)+"-Object Detection |  Network {:.0f}FPS".format(net.GetNetworkFPS()))
-	jetson.utils.saveImageRGBA(str(n)+'.jpg',img)
+	#jetson.utils.saveImageRGBA(str(n)+'.jpg',img)
 	#cv2.imshow('.jpg',img)
 	#output = jetson.utils.videoOutput("notdetection")
 	#output.Render(img)
@@ -104,23 +105,32 @@ def Detect_mine():
 	if format(len(detections)) == '0' :
 		se.write('O'.encode("GB2312"))
 		mwin.plainTextEdit_2.appendPlainText("Other_waste：")
-
+		#mwin.mysig.emit("Other_waste：")
+		#single_detectionThread.mysignal.emit("Other_waste：")
 	for detection in detections:
 		if detection.ClassID in Recyleable_waste :
 			se.write('R'.encode("GB2312"))
 			mwin.plainTextEdit_2.appendPlainText('Recyleable_waste：')
+			#mwin.mysig.emit("Recyleable_waste：")
+			#single_detectionThread.mysignal.emit("Recyleable_waste：")
 			print("ok")
 		elif detection.ClassID in Other_waste:
 			se.write('O'.encode("GB2312"))
-			mwin.plainTextEdit_2.appendPlainText("Other_waste：")
+			#mwin.plainTextEdit_2.appendPlainText("Other_waste：")
+			#mwin.mysig.emit("Other_waste：")
+			single_detectionThread.mysignal.emit("Other_waste：")
 			print("ok")
 		elif detection.ClassID in Harmful_waste:
 			se.write('H'.encode("GB2312"))
 			mwin.plainTextEdit_2.appendPlainText('Harmful_waste：')
+			#mwin.mysig.emit("Harmful_waste：")
+			#single_detectionThread.mysignal.emit("Harmful_waste：")
 			print("ok")
 		elif detection.ClassID in Kitchen_waste:
 			se.write('K'.encode("GB2312"))
+			#single_detectionThread.mysignal.emit("Kitchen_waste：")
 			mwin.plainTextEdit_2.appendPlainText('Kitchen_waste：')
+			#mwin.mysig.emit("Kitchen_waste：")
 			print("ok")
 		#print(detection)
 		print(detection.ClassID)
@@ -131,12 +141,17 @@ def Detect_mine():
 
 #-------------------------------------------------------------------------------------------------------
 #多线程
-class single_detectionThread(QThread):
+class single_detectionThread(QThread,QObject):
+	mysignal = pyqtSignal(str)  # 定义信号
 	def __init__(self):
-		super().__init__()
+		#super().__init__()
+		super(single_detectionThread, self).__init__()
+		
+		#self.mysignal=mwin.mysig
 
 	def run(self):
 		global flag
+		#self.mysignal.connect(lambda: self.signalcall)
 		while True:
 			receiving_code = se.readline().decode("GB2312")
 			print(receiving_code)
@@ -147,19 +162,40 @@ class single_detectionThread(QThread):
 			if flag == 1 :
 				break
 
+class video_Thread(QThread):
+	def __init__(self):
+		super().__init__()
+
+	def run(self):
+			os.system('mplayer /home/m217/Videos/video.mp4 -loop 0')
+
+
+# class BackendThread(QThread):
+#     update_date = pyqtSignal(str) # 定义信号
+#     def run(self):
+#         for i in range(1,11):
+#             # 发送数据。在主窗口类里创建该线程时，定义对此数据的处理方式。
+#             self.update_date.emit(str(i)) 
+#             time.sleep(6)
 
 #---------------------------------------------------------------------------------------------------------
 #UI界面
-class MainWindow(Ui_MainWindow, QMainWindow):
+class MainWindow(Ui_MainWindow, QMainWindow,QObject):
+
 	def __init__(self):
 		super(MainWindow, self).__init__()
 		self.setupUi(self)
 		self.mythread = single_detectionThread()
+		self.mythread.mysignal.connect(lambda:self.signalcall)
+		self.mythread2 = video_Thread()
+		self.resize(800, 600)
+
 
 		self.pushButton_5.clicked.connect(self.start_pushbutton)
-		
 		self.pushButton_3.clicked.connect(self.reset_pushbutton)
 		self.pushButton_4.clicked.connect(self.video_start)
+		
+
 	def start_pushbutton(self):
 		msgbox = QMessageBox.information(self,"系统提示：","开启成功！")
 		self.pushButton_5.setEnabled(True)
@@ -194,6 +230,21 @@ class MainWindow(Ui_MainWindow, QMainWindow):
 
 	def video_start(self):
 		self.plainTextEdit_2.appendPlainText('视频播放中...')
+		self.mythread2.start()
+	
+	def signalcall(self,val):
+		self.plainTextEdit_2.appendPlainText(val)
+
+# 	# 往主窗口显示面板添加内容。要这样用类方法，写在外面当函数不行。
+# def addshow(self,thestr): 
+#         self.te_printout.appendPlainText(thestr)
+ 
+#     # 想与主窗口交互信息的线程，在这里启动！
+# def startwatch1(self): 
+#         self.backend = BackendThread()
+#         # 定义接收数据的处理方式:转给addshow处理。
+#         self.backend.update_date.connect(self.addshow)
+#         self.backend.start()
 
 
 if __name__ == "__main__":

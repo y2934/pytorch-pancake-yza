@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """"""
-#方案二，测溢满同步进行或单独进行
+#最终程序，识别检测和测溢满同步进行
 
 
 import jetson.inference
@@ -26,7 +26,7 @@ Harmful_waste = [1,2]
 Kitchen_waste = [4,5,6]
 global n,flag, STR, num_all, num_harmful, num_kitchen, num_other, num_recyclable,STR2
 
-n=151  #保存照片序号
+#n=151  #保存照片序号
 flag=0  #检测结束标志位
 num_all = 0  # 垃圾总数
 num_harmful = 0
@@ -50,54 +50,107 @@ def fuchuzhi():
 	num_other = 0
 	num_kitchen = 0  # 各种垃圾独自的数量
 	STR = ''  # 垃圾显示文本
-	STR2 = ''  # 溢满提示文本
+	STR2 =''  # 溢满提示文本
+	FLAG_A=0
+	FLAG_B=0
 
 #-----------------------------------------------------------------------------------------
 #TOF初始化
 
+#
 tof1 = VL53L0X.VL53L0X(tca9548a_num=0, tca9548a_addr=0x70)
-tof2 = VL53L0X.VL53L0X(tca9548a_num=2, tca9548a_addr=0x70)
-
+tof2 = VL53L0X.VL53L0X(tca9548a_num=6, tca9548a_addr=0x70)
+tof3 = VL53L0X.VL53L0X(tca9548a_num=3, tca9548a_addr=0x70)
+tof4 = VL53L0X.VL53L0X(tca9548a_num=5, tca9548a_addr=0x70)
+#
 tof1.open()
 tof2.open()
-
+tof3.open()
+tof4.open()
+#
 tof1.start_ranging(VL53L0X.Vl53l0xAccuracyMode.HIGH_SPEED)
 tof2.start_ranging(VL53L0X.Vl53l0xAccuracyMode.HIGH_SPEED)
-
+tof3.start_ranging(VL53L0X.Vl53l0xAccuracyMode.HIGH_SPEED)
+tof4.start_ranging(VL53L0X.Vl53l0xAccuracyMode.HIGH_SPEED)
+#
 timing = tof2.get_timing()
 if timing < 20000:
 	timing = 20000
 print("Timing %d s" % (timing / 1000))
-#-----------------------------------------------------------------------------------------
-#测距函数
+# #-----------------------------------------------------------------------------------------
+# #测距函数
 def Get_distance():
 	distance1 = 0
 	distance2 = 0
-	global FLAG_A, FLAG_B
-
+	distance3 = 0
+	distance4 = 0
+	global FLAG_A, FLAG_B, FLAG_C, FLAG_D,flag_A_previous, flag_B_previous, flag_C_previous, flag_D_previous, STR2
+#
 	m = 5
 	for i in range(m):
-		count = i
+		count = i+1
 		# Get distance from VL53L0X  on TCA9548A bus 1
-		distance1 += tof1.get_distance()  # 投放口下
-		#print("1: %d mm, %d cm, %d" % ((distance1/m), (distance1/10/m), count))
+		distance1 += tof1.get_distance()   # 投放口下
+		print("1: %d mm, %d cm, %d" % ((distance1/count), (distance1/count/10), count))
 
-		# Get distance from VL53L0X  on TCA9548A bus 2
-		distance2 += tof2.get_distance()
-		#print("2: %d mm, %d cm, %d" % ((distance2/m), (distance2/10/m), count))
+# 		# Get distance from VL53L0X  on TCA9548A bus 2
+		distance2 += tof2.get_distance() 
+		print("2: %d mm, %d cm, %d" % ((distance2/count), (distance2/count/10), count))
 
+		# Get distance from VL53L0X  on TCA9548A bus 1
+		distance3 += tof3.get_distance()  # 投放口下
+		print("3: %d mm, %d cm, %d" % ((distance3 / count), (distance3 / count / 10), count))
+
+		# 		# Get distance from VL53L0X  on TCA9548A bus 2
+		distance4 += tof4.get_distance()
+		print("4: %d mm, %d cm, %d" % ((distance4 / count), (distance4 / count / 10), count))
+#
 		time.sleep(timing / 1000000.00)
-
-	if distance1 <= 40 * m:
-		print('这个溢满')
+#
+	print("1: %d mm, %d cm" % ((distance1/m), (distance1/m/10)))
+	print("2: %d mm, %d cm" % ((distance2/m), (distance2/m/10)))
+	print("3: %d mm, %d cm" % ((distance3 / m), (distance3 / m / 10)))
+	print("4: %d mm, %d cm" % ((distance4 / m), (distance4 / m / 10)))
+	if distance1 <= 400 * m:
+		print('1号口溢满')
 		FLAG_A = 1
 	else:
 		FLAG_A = 0
-	if distance2 <= 40 * m:
-		print('那个溢满')
+	if distance2 <= 400 * m:
+		print('2号口溢满')
 		FLAG_B = 1
 	else:
 		FLAG_B = 0
+	if distance3 <= 400 * m:
+		print('3号口溢满')
+		FLAG_C = 1
+	else:
+		FLAG_C = 0
+	if distance4 <= 400 * m:
+		print('4号口溢满')
+		FLAG_D = 1
+	else:
+		FLAG_D = 0
+
+	if FLAG_A and not flag_A_previous:
+		STR2 += '可回收垃圾 溢满提醒!\n'
+		tof1.stop_ranging()
+		flag_A_previous = True
+
+	if FLAG_B and not flag_B_previous:
+		STR2 += '其他垃圾 溢满提醒!\n'
+		tof2.stop_ranging()
+		flag_B_previous = True
+
+	if FLAG_C and not flag_C_previous:
+		STR2 += '有害垃圾 溢满提醒!\n'
+		tof3.stop_ranging()
+		flag_C_previous = True
+
+	if FLAG_D and not flag_D_previous:
+		STR2 += '厨余垃圾 溢满提醒!\n'
+		tof4.stop_ranging()
+		flag_D_previous = True
 
 
 #-----------------------------------------------------------------------------------------
@@ -134,6 +187,7 @@ output = jetson.utils.videoOutput(opt.output_URI, argv=sys.argv+is_headless)
 #display output detects
 #display = jetson.utils.videoOutput()
 #实时显示图片
+
 # load the object detection network
 net = jetson.inference.detectNet(opt.network, sys.argv, opt.threshold)
 
@@ -147,10 +201,10 @@ input = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
 def Detect_mine():
 	global n,flag, STR, num_all, num_harmful, num_kitchen, num_other, num_recyclable
 	STR = ''
-	if num_all == 0:
+	if num_all == 0:   #第一个垃圾不用延时
 		pass
 	else:
-		time.sleep(0.4)     #第一个垃圾不用延时
+		time.sleep(0.4)     
 	img = input.Capture()
 
 	# detect objects in the image (with overlay)
@@ -168,7 +222,7 @@ def Detect_mine():
 		print("other")
 		num_all += 1
 		num_other += 1
-		STR = "%d 其他垃圾 %d ok! \n" % (num_all, num_other)
+		STR = "%d nothing %d ok! \n" % (num_all, num_other)
 
 	for detection in detections:
 		if detection.ClassID in Recyclable_waste :
@@ -218,7 +272,7 @@ class single_detectionThread(QThread,QObject):
 		fuchuzhi()
 	def run(self):
 		global num_all
-		while True:
+		while (flag==0):
 			receiving_code = se.readline().decode("GB2312")
 			print(receiving_code)
 			if receiving_code == 'A':
@@ -229,33 +283,55 @@ class single_detectionThread(QThread,QObject):
 			if num_all == 10:
 				break
 
+	def thread_exit(self):
+		print("detect stop!")
+		self.quit()
+		self.wait()
+		
+		#self.terminate()    #强制退出，避免使用
+
 #测距线程
-class Getdistance_thread(QThread):
+class Getdistance_thread(QThread,QObject):
 	mysignal2 = pyqtSignal(str)  # 定义测距信号
 	def __init__(self):
-		super().__init__()
+		super(Getdistance_thread,self).__init__()
 
 	def run(self):
-		global STR2
+		global STR2, flag_A_previous, flag_B_previous, flag_C_previous, flag_D_previous
+		STR2 = ''
+		flag_A_previous = False
+		flag_B_previous = False
+		flag_C_previous = False
+		flag_D_previous = False
 		while True:
 			Get_distance()
-			if FLAG_A == 1:
-				STR2 = '有害垃圾溢满提醒\n'
-			if FLAG_B == 1:
-				STR2 = '其他垃圾溢满提醒\n'
 			self.mysignal2.emit(STR2)  # 发射信号
-			if flag == 1:
-				break
+
+	def thread_exit(self):
+		print("getdistance stop!")
+		self.quit()
+		self.wait()
+		
+		#self.terminate()    #强制退出，避免使用
 
 
-
+#使用系统的mplayer命令行工具来播放视频文件
 #视频线程
 class video_Thread(QThread):
 	def __init__(self):
 		super().__init__()
 
+#添加-input file=/dev/null参数来禁用mplayer的标准输入（stdin）
 	def run(self):
-			os.system('mplayer /home/m217/Videos/video.mp4 -loop 0')
+		os.system('mplayer /home/m217/Videos/jay_video.mp4 -loop 0 -input file=/dev/null &')
+
+#发送一个“quit”命令到一个名为/tmp/mplayer-control的文件中，然后使用killall命令停止所有正在运行的mplayer进程
+	def thread_exit(self):
+		print("video stop!")
+		os.system('sleep 1 && echo "quit" > /tmp/mplayer-control && killall mplayer')
+		#self.quit()
+		#self.wait()
+		#self.terminate()    #强制退出，避免使用
 
 
 #----------------------------------------------------------------------mythread.mysignal.connect(lambda:self.signalcall)-----------------------------------
@@ -264,43 +340,44 @@ class MainWindow(Ui_MainWindow, QMainWindow,QMessageBox):
 	def __init__(self):
 		super(MainWindow, self).__init__()
 		self.setupUi(self)
-		self.mythread = single_detectionThread()
-		self.mythread2 = video_Thread()
-		self.mythread3 = Getdistance_thread()
-		self.mythread.mysignal.connect(self.signalcall)
-		self.mythread3.mysignal2.connect(self.signalcall2)
+		self.detectionThread = single_detectionThread()
+		self.videoThread = video_Thread()
+		self.GetdistanceThread = Getdistance_thread()
+		self.detectionThread.mysignal.connect(self.signalcall)
+		self.GetdistanceThread.mysignal2.connect(self.signalcall2)
 
-		self.resize(800, 600)
+		self.resize(1000, 800)
 
 		self.pushButton_5.clicked.connect(self.start_pushbutton)
 		self.pushButton_3.clicked.connect(self.reset_pushbutton)
 		self.pushButton_4.clicked.connect(self.video_start)
 	def start_pushbutton(self):
-		reply= QMessageBox.about(self,"系统提示：","开启成功！","好耶")
+		reply= QMessageBox.about(self,"系统提示：","开启成功！")
 		self.pushButton_5.setEnabled(True)
 		print('开始识别：\n')
 		self.plainTextEdit_2.appendPlainText('开始识别：')
 		self.plainTextEdit_3.appendPlainText('开始测溢满：')
-		self.mythread.start()
-		self.mythread3.start()
+		self.detectionThread.start()
+		self.GetdistanceThread.start()
 
 
 		self.pushButton_2.clicked.connect(self.stop_pushbutton)
 	def stop_pushbutton(self):
 		global flag
 		reply = QMessageBox.question(self, '系统提示', '你确定要结束识别？', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+		reply.setStyleSheet("QLabel{min-width: 300px; font-size: 16px; color: white;}")
 		# event.accept()
 		if reply != QMessageBox.Yes:
 			#event.ignore()
-			pass
+			pass 
 		else:
 			flag = 1
 			print('结束所有任务\n')
 			self.plainTextEdit_2.appendPlainText('结束所有任务！')
-			self.mythread2.thread_exit()
-			self.mythread3.thread_exit()
-			self.mythread.thread_exit()
-		self.pushButton_2.setEnabled(False)
+			self.videoThread.thread_exit()
+			self.GetdistanceThread.thread_exit()
+			self.detectionThread.thread_exit()
+			self.pushButton_2.setEnabled(False)
 
 
 	def reset_pushbutton(self):
@@ -310,18 +387,19 @@ class MainWindow(Ui_MainWindow, QMainWindow,QMessageBox):
 		self.plainTextEdit_2.setPlainText("")  # 清屏
 		self.plainTextEdit_3.setPlainText("")
 		fuchuzhi()
-		reply= QMessageBox.about(self,"系统提示：","开启成功！","好耶")
+		reply= QMessageBox.about(self,"系统提示：","开启成功！")
+		reply.setStyleSheet("QLabel{min-width: 300px; font-size: 16px; color: white;}")
 		self.pushButton_5.setEnabled(True)
 		print('开始识别：\n')
 		self.plainTextEdit_2.appendPlainText('开始识别：')
 		self.plainTextEdit_3.appendPlainText('开始测溢满：')
-		self.mythread.start()
-		self.mythread3.start()
+		self.detectionThread.start()
+		self.GetdistanceThread.start()
 
 
 	def video_start(self):
 		self.plainTextEdit_2.appendPlainText('视频播放中...')
-		self.mythread2.start()
+		self.videoThread.start()
 
 	def signalcall(self,text):    #检测文本显示信号槽函数
 		self.plainTextEdit_2.appendPlainText(text)
@@ -329,10 +407,7 @@ class MainWindow(Ui_MainWindow, QMainWindow,QMessageBox):
 	def signalcall2(self,text):    #溢满文本显示信号槽函数
 		self.plainTextEdit_3.appendPlainText(text)
 
-	def thread_exit(self):
-		self.quit()
-		self.wait()
-		#self.terminate()    #强制退出，避免使用
+	
 
 
 if __name__ == "__main__":
@@ -342,7 +417,6 @@ if __name__ == "__main__":
 	sys.exit(app.exec_())
 
 # process frames until the user exits
-	# capture the next image
 
 
 
